@@ -120,7 +120,7 @@ contract Begging is Initializable, OwnableUpgradeable {
         }
     }
 
-    function getDonation(address _donor) public returns (uint256) {
+    function getDonation(address _donor) public view returns (uint256) {
         require(_donor != address(0), "donator address cannot be zero");
         uint256 total;
 

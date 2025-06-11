@@ -14,31 +14,30 @@ describe("Begging", function () {
         const factoryContract = await deployments.get("BeggingFactory");
         beggingFactory = await ethers.getContractAt("BeggingFactory", factoryContract.address);
         [deployer, account1, account2, account3, account4,] = await ethers.getSigners();
+
+        const tx = await beggingFactory.connect(account1).createBegging("乞討測試", "純要飯", 86400)
+        const receipt = await tx.wait();
+
+        // 取得proxy合約地址
+        let beggingAddress;
+        if (receipt.logs) {
+            for (const log of receipt.logs) {
+                try {
+                    const parsedLog = beggingFactory.interface.parseLog(log);
+                    if (parsedLog.name === "BeggingCreated") {
+                        beggingAddress = parsedLog.args.begging;
+                        break;
+                    }
+                } catch (error) {
+                }
+            }
+        }
+
+        console.log("beggingAddress: ", beggingAddress)
+        BeggingProxy = await ethers.getContractAt("Begging", beggingAddress);
     });
 
     describe("beacon代理測試", () => {
-        beforeEach(async function () {
-            const tx = await beggingFactory.connect(account1).createBegging("乞討測試", "純要飯", 86400)
-            const receipt = await tx.wait();
-
-            // 取得proxy合約地址
-            let beggingAddress;
-            if (receipt.logs) {
-                for (const log of receipt.logs) {
-                    try {
-                        const parsedLog = beggingFactory.interface.parseLog(log);
-                        if (parsedLog.name === "BeggingCreated") {
-                            beggingAddress = parsedLog.args.begging;
-                            break;
-                        }
-                    } catch (error) {
-                    }
-                }
-            }
-
-            console.log("beggingAddress: ", beggingAddress)
-            BeggingProxy = await ethers.getContractAt("Begging", beggingAddress);
-        });
         it("正確簿版", async function () {
             expect(await BeggingProxy.version()).to.equal("1.0.0")
             expect(await BeggingProxy.owner()).to.equal(account1.address)
@@ -58,23 +57,23 @@ describe("Begging", function () {
 
         it("不在正確時間捐款", async function () {
             await twoDaysLater();
-            expect(await BeggingProxy.connect(account2).donate("account2 wrong notes!", 999, ethers.ZeroAddress, { value: 10 })).to.be.revertedWith("this begging had already ended!")
+            await expect(BeggingProxy.connect(account2).donate("account2 wrong notes!", 999, ethers.ZeroAddress, { value: 10 })).revertedWith("this begging had already ended!")
         })
 
         it("沒有捐款金額", async function () {
-            expect(await BeggingProxy.connect(account2).donate("account2 no donation amount", 999, ethers.ZeroAddress)).to.be.revertedWith("no donation amount detected")
+            await expect(BeggingProxy.connect(account2).donate("account2 no donation amount", 999, ethers.ZeroAddress, { value: 0 })).revertedWith("no donation amount detected")
         })
     })
 
     describe("測試取款功能", () => {
         it("正常ETH取款", async function () {
             await BeggingProxy.connect(account2).donate("account2 donation", 999, ethers.ZeroAddress, { value: 10 })
-            await BeggingProxy.connect(account2).withdraw()
+            await BeggingProxy.connect(account1).withdraw()
         })
         it("正常USDC取款", async function () { })
         it("非擁有者要取款", async function () {
             await BeggingProxy.connect(account2).donate("account2 donation", 999, ethers.ZeroAddress, { value: 10 })
-            expect(await BeggingProxy.connect(account2).withdraw()).to.be.reverted
+            await expect(BeggingProxy.connect(account2).withdraw()).reverted
         })
     })
 
